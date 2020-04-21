@@ -12,7 +12,9 @@ from enum import IntEnum
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.append(os.path.relpath("../sim_python/grid_map_lib/"))
+from a_star import AStarPlanner
+
+sys.path.append(os.path.relpath("./grid_map_lib/"))
 try:
     from grid_map_lib import GridMap
 except ImportError:
@@ -190,7 +192,9 @@ def search_free_grid_index_at_edge_y(grid_map, from_upper=False):
             if not grid_map.check_occupied_from_xy_index(ix, iy,occupied_val=0.5):
                 yind = iy
                 xinds.append(ix)
+        
         if yind:       #在高度这个维度上，找到第一个空闲的点则停止，并记录水平方向上所有的点
+            x_pos, y_pos = grid_map.calc_grid_central_xy_position_from_xy_index(xinds[-1],yind)
             break
 
     return xinds, yind
@@ -273,6 +277,8 @@ def planning(ox, oy, ox_in,oy_in,reso,
     gmap.plot_grid_map(ax=ax)
     sweep_searcher = SweepSearcher(moving_direction, sweeping_direction)
 
+    astar_path = AStarPlanner(ox, oy, ox_in,oy_in, reso, reso)
+
     px=[]
     py=[]
 
@@ -285,6 +291,16 @@ def planning(ox, oy, ox_in,oy_in,reso,
         gmap.plot_grid_map(ax=ax)
         px.append(px_temp)
         py.append(py_temp)
+
+        xinds_goaly, goaly = find_goal_map(gmap, sweeping_direction)
+        if len(xinds_goaly) == 0:
+            break
+        xind_start, yind_start = sweep_searcher.search_start_grid(gmap)
+        gx, gy = gmap.calc_grid_central_xy_position_from_xy_index(xind_start,yind_start)
+        rx, ry = astar_path.planning(px_temp[-1], py_temp[-1], gx, gy)
+
+        px.append(rx)
+        py.append(ry)
 
     plt.cla()
     plt.plot(rox, roy, "-xb")
