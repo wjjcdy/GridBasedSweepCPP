@@ -312,9 +312,9 @@ def planning(ox, oy, ox_in,oy_in,reso,
     color=["-xr","-.","-or"]
     color1=["-x","-.","-o"]
     for i in range(len(px)):
-        if i==2 :
+        if i % 2 :
             for ipx, ipy in zip(px[i],py[i]):
-                plt.plot(ipx, ipy, color[i%3])
+                plt.plot(ipx, ipy, "-or")
                 plt.axis("equal")
                 plt.grid(True)
                 plt.pause(0.0001)
