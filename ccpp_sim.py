@@ -12,6 +12,8 @@ from enum import IntEnum
 import matplotlib.pyplot as plt
 import numpy as np
 
+from a_star import AStarPlanner
+
 sys.path.append(os.path.relpath("./grid_map_lib/"))
 try:
     from grid_map_lib import GridMap
@@ -19,7 +21,7 @@ except ImportError:
     raise
 
 DT = 0.1  # time tick [s]
-V_SPEED = 2.0
+V_SPEED = 3.0
 YAW_SPEED = 0.3
 do_animation = True
 
@@ -489,7 +491,7 @@ def main():  # pragma: no cover
         ox_outside[i] = ox_outside[i] / 4.0
         oy_outside[i] = oy_outside[i] / 2.0
 
-    ox_inside = [[75, 75, 50,50,75]]
+    ox_inside = [[140, 140, 70,70,140]]
     oy_inside = [[18, 28, 28,18,18]]
     # ox_inside = []
     # oy_inside = []
@@ -500,6 +502,10 @@ def main():  # pragma: no cover
     reso = 3
 
     real_world_gmap = setup_grid_map(ox_outside, oy_outside, ox_inside,oy_inside, reso)           #此为假设为真实环境地图
+
+    # A star init
+    astar_path = AStarPlanner(ox_outside, oy_outside, ox_inside,oy_inside, reso, reso)
+
     # real_world_gmap.plot_grid_map()
     robot_pos_start = [0,0,0]                                            #此为机器人启动位置和方向
 
@@ -572,182 +578,223 @@ def main():  # pragma: no cover
     for i in range(len(ox_inside)):
         ax2.plot(ox_inside[i], oy_inside[i], "-xb")
     ax2.plot(ox_recode, oy_recode, "-xb")
-    while curr_state != FINISH:                                      # 规划未结束
-        xTrue = motion_model(xTrue, v, yaw_rate)                     # 实时更新当前位置
 
-        obstacle_flag = get_obstacle(xTrue,real_world_gmap,reso)     # 获取当前运动方向前方障碍状态,此处实际应为传感器获取，这里假设直接读取
 
-        if obstacle_flag: 
-            path_gird_map = mapping_creat(xTrue,path_gird_map,reso)  # 存在障碍，绘图，即标注为1
+    while True:
+        while curr_state != FINISH:                                      # 规划未结束
+            xTrue = motion_model(xTrue, v, yaw_rate)                     # 实时更新当前位置
 
-        path_gird_map.set_value_from_xy_pos(xTrue[0,0], xTrue[1,0], 0.5)  # 当前所在位置，已经走过的位置，应标注为0.5 
+            obstacle_flag = get_obstacle(xTrue,real_world_gmap,reso)     # 获取当前运动方向前方障碍状态,此处实际应为传感器获取，这里假设直接读取
 
-        # 状态机
-        cxind, cyind = path_gird_map.get_xy_index_from_xy_pos(xTrue[0,0], xTrue[1,0])  # 获取当前地图坐标
-        # 当前方向，向右， 右边状态，若空闲则退出，若非空闲，跳跃至右上角
-        if curr_state == HOR_search:
-            nxind = cxind + sweep_x_direction
-            nyind = cyind
-            if (not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
-               not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5)):   # 无障碍，且移动完成
-                curr_state = HOR_search                                                 # 下周期继续水平方向
-                v, yaw_rate,flag = move_target(xTrue,nxind,nyind,path_gird_map)
-                target_x_ind = nxind
-                target_y_ind = nyind
-            else:
-                v, yaw_rate,flag = move_target(xTrue,target_x_ind,target_y_ind,path_gird_map)
-                curr_state = HOR_search
-                if flag:
-                    curr_state = RIGHT_UP_move   
-                    v = 0               # 停止运动
-                    yaw_rate = 0           
-        # 旋转至右上角方向（若左遍历，则左上角方向）
-        elif curr_state == RIGHT_UP_move: 
-            if sweep_x_direction>0:
-                v,yaw_rate,finish_flag = turn_target(xTrue,math.pi/4 )
-            else:
-                v,yaw_rate,finish_flag = turn_target(xTrue,3* math.pi/4)
-            if finish_flag:
+            if obstacle_flag: 
+                path_gird_map = mapping_creat(xTrue,path_gird_map,reso)  # 存在障碍，绘图，即标注为1
+
+            path_gird_map.set_value_from_xy_pos(xTrue[0,0], xTrue[1,0], 0.5)  # 当前所在位置，已经走过的位置，应标注为0.5 
+
+            # 状态机
+            cxind, cyind = path_gird_map.get_xy_index_from_xy_pos(xTrue[0,0], xTrue[1,0])  # 获取当前地图坐标
+            # 当前方向，向右， 右边状态，若空闲则退出，若非空闲，跳跃至右上角
+            if curr_state == HOR_search:
+                nxind = cxind + sweep_x_direction
+                nyind = cyind
+                if (not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
+                not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5)):   # 无障碍，且移动完成
+                    curr_state = HOR_search                                                 # 下周期继续水平方向
+                    v, yaw_rate,flag = move_target(xTrue,nxind,nyind,path_gird_map)
+                    target_x_ind = nxind
+                    target_y_ind = nyind
+                else:
+                    v, yaw_rate,flag = move_target(xTrue,target_x_ind,target_y_ind,path_gird_map)
+                    curr_state = HOR_search
+                    if flag:
+                        curr_state = RIGHT_UP_move   
+                        v = 0               # 停止运动
+                        yaw_rate = 0           
+            # 旋转至右上角方向（若左遍历，则左上角方向）
+            elif curr_state == RIGHT_UP_move: 
+                if sweep_x_direction>0:
+                    v,yaw_rate,finish_flag = turn_target(xTrue,math.pi/4 )
+                else:
+                    v,yaw_rate,finish_flag = turn_target(xTrue,3* math.pi/4)
+                if finish_flag:
+                    v = 0.0
+                    yaw_rate = 0.0
+                    curr_state = RIGHT_UP_search
+            # 查看右上角障碍物状态（若左遍历，则左上角方向）
+            elif curr_state == RIGHT_UP_search:  #
+                nxind = cxind + sweep_x_direction
+                nyind = cyind + 1
+                if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
+                not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):   # 无障碍:   # 无障碍
+                    curr_state = FRONT_move                                                 # 下周期继续水平方向
+                else:
+                    curr_state = UP_move
                 v = 0.0
                 yaw_rate = 0.0
-                curr_state = RIGHT_UP_search
-        # 查看右上角障碍物状态（若左遍历，则左上角方向）
-        elif curr_state == RIGHT_UP_search:  #
-            nxind = cxind + sweep_x_direction
-            nyind = cyind + 1
-            if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
-               not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):   # 无障碍:   # 无障碍
-                curr_state = FRONT_move                                                 # 下周期继续水平方向
-            else:
-                curr_state = UP_move
-            v = 0.0
-            yaw_rate = 0.0
-        # 旋转至上方          
-        elif curr_state == UP_move: 
-            if sweep_x_direction>0:
-                v,yaw_rate,finish_flag  = turn_target(xTrue,math.pi/2 )
-            else:
-                v,yaw_rate,finish_flag  = turn_target(xTrue,math.pi/2)
-            if finish_flag:
+            # 旋转至上方          
+            elif curr_state == UP_move: 
+                if sweep_x_direction>0:
+                    v,yaw_rate,finish_flag  = turn_target(xTrue,math.pi/2 )
+                else:
+                    v,yaw_rate,finish_flag  = turn_target(xTrue,math.pi/2)
+                if finish_flag:
+                    v = 0.0
+                    yaw_rate = 0.0
+                    curr_state = UP_search
+            # 查看上方障碍物状态
+            elif curr_state == UP_search:  #
+                nxind = cxind 
+                nyind = cyind + 1
+                if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
+                not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):   # 无障碍:   # 无障碍
+                    curr_state = FRONT_move                                                 # 下周期继续水平方向
+                else:
+                    curr_state = LEFT_UP_move
                 v = 0.0
                 yaw_rate = 0.0
-                curr_state = UP_search
-        # 查看上方障碍物状态
-        elif curr_state == UP_search:  #
-            nxind = cxind 
-            nyind = cyind + 1
-            if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
-               not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):   # 无障碍:   # 无障碍
-                curr_state = FRONT_move                                                 # 下周期继续水平方向
-            else:
-                curr_state = LEFT_UP_move
-            v = 0.0
-            yaw_rate = 0.0
 
-        # 旋转至左上方（若左遍历，则右上角方向）          
-        elif curr_state == LEFT_UP_move: 
-            if sweep_x_direction >0:
-                v,yaw_rate,finish_flag  = turn_target(xTrue,3*math.pi/4 )
-            else:
-                v,yaw_rate,finish_flag  = turn_target(xTrue,math.pi/4)
-            if finish_flag:
-                v = 0.0
-                yaw_rate = 0.0
-                curr_state = LEFT_UP_search
-        # 查看左上方障碍物状态（若左遍历，则右上角方向）
-        elif curr_state == LEFT_UP_search:  #
-            nxind = cxind - sweep_x_direction_back
-            nyind = cyind + 1
-            if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
-               not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):   # 无障碍:   # 无障碍
-                curr_state = FRONT_move                                                 # 下周期继续水平方向
-            else:
-                curr_state = BACK_turn
-            v = 0.0
-            yaw_rate = 0.0    
-        # 需要回退一格，因此先旋转至后退方向
-        elif curr_state == BACK_turn:  #
-            if sweep_x_direction>0:
-                v,yaw_rate,finish_flag  = turn_target(xTrue,math.pi)
-            else:
-                v,yaw_rate,finish_flag  = turn_target(xTrue,0)
-            if finish_flag:
-                v = 0.0
-                yaw_rate = 0.0
-                curr_state = BACK_search
-        # 需要回退一格
-        elif curr_state == BACK_search:  #
-            nxind = cxind - sweep_x_direction
-            nyind = cyind
-            if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=1.0):   # 已走过的或者空白的均可
-                curr_state = BACK_move                                                 # 下周期继续水平方向
-                nxind = cxind - sweep_x_direction
-                nyind = cyind 
-            else: 
-                curr_state = FINISH
-            v = 0.0
-            yaw_rate = 0.0 
-
-        # 旋转至回退的方向
-        elif curr_state == BACK_move:
-            # nxind = cxind - sweep_x_direction
-            # nyind = cyind 
-            v, yaw_rate,flag = move_target(xTrue,nxind,nyind,path_gird_map)
-            if math.fabs(v)<0.00001 and math.fabs(yaw_rate) < 0.000001 :
+            # 旋转至左上方（若左遍历，则右上角方向）          
+            elif curr_state == LEFT_UP_move: 
+                if sweep_x_direction >0:
+                    v,yaw_rate,finish_flag  = turn_target(xTrue,3*math.pi/4 )
+                else:
+                    v,yaw_rate,finish_flag  = turn_target(xTrue,math.pi/4)
+                if finish_flag:
+                    v = 0.0
+                    yaw_rate = 0.0
+                    curr_state = LEFT_UP_search
+            # 查看左上方障碍物状态（若左遍历，则右上角方向）
+            elif curr_state == LEFT_UP_search:  #
                 nxind = cxind - sweep_x_direction_back
                 nyind = cyind + 1
-                if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):  
-                    sweep_x_direction_back = -sweep_x_direction
-                    curr_state = LEFT_UP_move                                               # 回退后，重复判断左上角
+                if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
+                not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):   # 无障碍:   # 无障碍
+                    curr_state = FRONT_move                                                 # 下周期继续水平方向
                 else:
-                    curr_state = BACK_search
-
-        # 向前移动一个栅格到目标位置
-        elif curr_state == FRONT_move:                                                  # 前行一个栅格距离
-            v, yaw_rate, flag = move_target(xTrue,nxind,nyind,path_gird_map)
-            if math.fabs(v)<0.00001 and math.fabs(yaw_rate) < 0.000001 :
-                curr_state = X_DIRECTION_change
-
-        # 移动下一行旋转至水平遍历方向
-        elif curr_state == X_DIRECTION_change:                                          # 当前行旋转至水平方向
-            if sweep_x_direction>0:
-                v,yaw_rate,finish_flag  = turn_target(xTrue,-math.pi)
-            else:
-                v,yaw_rate,finish_flag  = turn_target(xTrue,0)
-            if finish_flag:
+                    curr_state = BACK_turn
                 v = 0.0
-                yaw_rate = 0.0
-                curr_state = HOR_search
-                sweep_x_direction = -sweep_x_direction                                  # 切换水平遍历方向
-                sweep_x_direction_back = sweep_x_direction
+                yaw_rate = 0.0    
+            # 需要回退一格，因此先旋转至后退方向
+            elif curr_state == BACK_turn:  #
+                if sweep_x_direction>0:
+                    v,yaw_rate,finish_flag  = turn_target(xTrue,math.pi)
+                else:
+                    v,yaw_rate,finish_flag  = turn_target(xTrue,0)
+                if finish_flag:
+                    v = 0.0
+                    yaw_rate = 0.0
+                    curr_state = BACK_search
+            # 需要回退一格
+            elif curr_state == BACK_search:  #
+                nxind = cxind - sweep_x_direction
+                nyind = cyind
+                if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=1.0):   # 已走过的或者空白的均可
+                    curr_state = BACK_move                                                 # 下周期继续水平方向
+                    nxind = cxind - sweep_x_direction
+                    nyind = cyind 
+                else: 
+                    curr_state = FINISH
+                v = 0.0
+                yaw_rate = 0.0 
 
-        print("curr: (%d), v:(%f), yaw_rate:(%f), cx:(%d), nx:(%d), cy:(%d) ny:(%d), direction:(%d),back_direction:(%d)" \
-            %(curr_state,v,yaw_rate,cxind, nxind,cyind, nyind, sweep_x_direction,sweep_x_direction_back))
-        # x,y=path_gird_map.calc_grid_central_xy_position_from_xy_index(nxind, nyind)
-        # print("curr_x:(%f), curr_y:(%f),head:(%f),n_x:(%f),n_y:(%f)"%(xTrue[0,0], xTrue[1,0],xTrue[2,0],x,y))
+            # 旋转至回退的方向
+            elif curr_state == BACK_move:
+                # nxind = cxind - sweep_x_direction
+                # nyind = cyind 
+                v, yaw_rate,flag = move_target(xTrue,nxind,nyind,path_gird_map)
+                if math.fabs(v)<0.00001 and math.fabs(yaw_rate) < 0.000001 :
+                    nxind = cxind - sweep_x_direction_back
+                    nyind = cyind + 1
+                    if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):  
+                        sweep_x_direction_back = -sweep_x_direction
+                        curr_state = LEFT_UP_move                                               # 回退后，重复判断左上角
+                    else:
+                        curr_state = BACK_search
 
-        # animation(path_gird_map, path_gird_map, reso, xTrue,ax1,ax2,ox_recode,oy_recode,ox_inside,oy_inside)
+            # 向前移动一个栅格到目标位置
+            elif curr_state == FRONT_move:                                                  # 前行一个栅格距离
+                v, yaw_rate, flag = move_target(xTrue,nxind,nyind,path_gird_map)
+                if math.fabs(v)<0.00001 and math.fabs(yaw_rate) < 0.000001 :
+                    curr_state = X_DIRECTION_change
+
+            # 移动下一行旋转至水平遍历方向
+            elif curr_state == X_DIRECTION_change:                                          # 当前行旋转至水平方向
+                if sweep_x_direction>0:
+                    v,yaw_rate,finish_flag  = turn_target(xTrue,-math.pi)
+                else:
+                    v,yaw_rate,finish_flag  = turn_target(xTrue,0)
+                if finish_flag:
+                    v = 0.0
+                    yaw_rate = 0.0
+                    curr_state = HOR_search
+                    sweep_x_direction = -sweep_x_direction                                  # 切换水平遍历方向
+                    sweep_x_direction_back = sweep_x_direction
+
+            print("curr: (%d), v:(%f), yaw_rate:(%f), cx:(%d), nx:(%d), cy:(%d) ny:(%d), direction:(%d),back_direction:(%d)" \
+                %(curr_state,v,yaw_rate,cxind, nxind,cyind, nyind, sweep_x_direction,sweep_x_direction_back))
+            # x,y=path_gird_map.calc_grid_central_xy_position_from_xy_index(nxind, nyind)
+            # print("curr_x:(%f), curr_y:(%f),head:(%f),n_x:(%f),n_y:(%f)"%(xTrue[0,0], xTrue[1,0],xTrue[2,0],x,y))
+
+            # animation(path_gird_map, path_gird_map, reso, xTrue,ax1,ax2,ox_recode,oy_recode,ox_inside,oy_inside)
+            
+            path_x.append(xTrue[0,0])
+            path_y.append(xTrue[1,0])
+
+            robot_model_x, robot_model_y = model_cal(xTrue)
+
+            x_pos = xTrue[0,0] + 1.5 * math.cos(xTrue[2, 0]) 
+            y_pos = xTrue[1,0] + 1.5 * math.sin(xTrue[2, 0])
+            
+            head_path_x.append(x_pos)
+            head_path_y.append(y_pos)
+
+            plt.cla()
+            for i in range(len(ox_inside)):
+                ax2.plot(ox_inside[i], oy_inside[i], "-xb")
+            ax2.plot(ox_recode, oy_recode, "-xb")
+            ax2.plot(robot_model_x, robot_model_y, "-.g")
+            ax2.plot(path_x, path_y, ".b")
+            ax2.plot(head_path_x,head_path_y,".r")
+            plt.axis("equal")
+            plt.pause(0.000001)
+
+        xinds_goaly, goaly = find_goal_map(path_gird_map, -1)
+        print("free point number: %d" %(len(xinds_goaly)))
+        if len(xinds_goaly) == 0:
+            break        
         
-        path_x.append(xTrue[0,0])
-        path_y.append(xTrue[1,0])
-
-        robot_model_x, robot_model_y = model_cal(xTrue)
-
-        x_pos = xTrue[0,0] + 1.5 * math.cos(xTrue[2, 0]) 
-        y_pos = xTrue[1,0] + 1.5 * math.sin(xTrue[2, 0])
+        xind_start, yind_start = sweep_searcher.search_start_grid(path_gird_map)
+        gx, gy = path_gird_map.calc_grid_central_xy_position_from_xy_index(xind_start,yind_start)
         
-        head_path_x.append(x_pos)
-        head_path_y.append(y_pos)
+        x_temp = xTrue[0,0]
+        y_temp = xTrue[1,0]
 
-        plt.cla()
-        for i in range(len(ox_inside)):
-            ax2.plot(ox_inside[i], oy_inside[i], "-xb")
-        ax2.plot(ox_recode, oy_recode, "-xb")
-        ax2.plot(robot_model_x, robot_model_y, "-.g")
-        ax2.plot(path_x, path_y, ".b")
-        ax2.plot(head_path_x,head_path_y,".r")
-        plt.axis("equal")
-        plt.pause(0.01)
+        rx, ry = astar_path.planning(x_temp, y_temp, gx, gy)
+
+        if len(rx) <= 1:
+            print("can't reach target pos, len: %d"%(len(rx)))
+            break        
+
+        # while True:
+        #     v, yaw_rate,flag = move_target(xTrue,nxind,nyind,path_gird_map)
+        #     xTrue = motion_model(xTrue, v, yaw_rate)
+
+        xTrue = np.array([                                                                                    # 初始状态
+        [rx[-1]],
+        [ry[-1]],
+        [0],
+        [0]
+        ])
+        path_x = path_x + rx
+        path_y = path_y + ry
+
+        curr_state = HOR_search
+        sweep_x_direction = 1      # 初始清扫方向为从左到右
+        sweep_x_direction_back = sweep_x_direction # for back mode 
+        nxind = cxind 
+        nyind = cyind
+        v = 0
+        yaw_rate = 0
 
     # plt.clf()
     # ax2.plot(ox_inside, oy_inside, "-xb")
