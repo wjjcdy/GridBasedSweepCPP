@@ -12,7 +12,7 @@ from enum import IntEnum
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.append(os.path.relpath("../sim_python/grid_map_lib/"))
+sys.path.append(os.path.relpath("./grid_map_lib/"))
 try:
     from grid_map_lib import GridMap
 except ImportError:
@@ -389,7 +389,7 @@ def move_target(x,xind,yind,gmap):
     if math.fabs(temp_x)<0.1 and math.fabs(temp_y)<0.1:
         v = 0.0
         yaw_rate = 0.0
-        return v,yaw_rate
+        return v,yaw_rate, True
 
     angle_target = math.atan2(temp_y,temp_x)
     angle_temp = angle_target - x[2,0]
@@ -405,7 +405,7 @@ def move_target(x,xind,yind,gmap):
         v = V_SPEED
         yaw_rate = 0.0
 
-    return v,yaw_rate
+    return v,yaw_rate,False
 
 def turn_target(x,target_angle):
     finish_flag = False
@@ -424,6 +424,51 @@ def turn_target(x,target_angle):
 
     return v,yaw_rate,finish_flag
     
+def model_cal(xTrue):
+    model_x = []
+    model_y = []
+
+    x = xTrue[0,0]
+    y = xTrue[1,0]
+    yaw = xTrue[2,0] 
+
+    x_front = x + 1.5 * math.cos(yaw) 
+    y_front = y + 1.5 * math.sin(yaw)
+
+    x_back = x - 0.5 * math.cos(yaw) 
+    y_back = y - 0.5 * math.sin(yaw)
+
+    yaw_pi_2 = yaw + math.pi/2
+
+    x_pos_1 = x_front + 1 * math.cos(yaw_pi_2)
+    y_pos_1 = y_front + 1 * math.sin(yaw_pi_2)
+
+    model_x.append(x_pos_1)
+    model_y.append(y_pos_1)
+
+    x_pos = x_front - 1 * math.cos(yaw_pi_2)
+    y_pos = y_front - 1 * math.sin(yaw_pi_2)
+
+    model_x.append(x_pos)
+    model_y.append(y_pos)
+
+    x_pos = x_back - 1.5 * math.cos(yaw_pi_2)
+    y_pos = y_back - 1.5 * math.sin(yaw_pi_2)
+
+    model_x.append(x_pos)
+    model_y.append(y_pos)
+
+    x_pos = x_back + 1.5 * math.cos(yaw_pi_2)
+    y_pos = y_back + 1.5 * math.sin(yaw_pi_2)
+
+    model_x.append(x_pos)
+    model_y.append(y_pos)
+
+    model_x.append(x_pos_1)
+    model_y.append(y_pos_1)
+
+
+    return model_x, model_y
 
 
 
@@ -516,6 +561,10 @@ def main():  # pragma: no cover
     nxind = cxind 
     nyind = cyind
 
+    Target_finished_flag = True   # 平移结束标志
+    target_x_ind = nxind
+    target_y_ind = nyind
+
 
     fig, ax = plt.subplots(1)
     ax1 = ax
@@ -539,14 +588,19 @@ def main():  # pragma: no cover
         if curr_state == HOR_search:
             nxind = cxind + sweep_x_direction
             nyind = cyind
-            if not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
-               not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5):   # 无障碍
+            if (not path_gird_map.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5) and \
+               not real_world_gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5)):   # 无障碍，且移动完成
                 curr_state = HOR_search                                                 # 下周期继续水平方向
-                v, yaw_rate = move_target(xTrue,nxind,nyind,path_gird_map)
+                v, yaw_rate,flag = move_target(xTrue,nxind,nyind,path_gird_map)
+                target_x_ind = nxind
+                target_y_ind = nyind
             else:
-                curr_state = RIGHT_UP_move   
-                v = 0               # 停止运动
-                yaw_rate = 0           
+                v, yaw_rate,flag = move_target(xTrue,target_x_ind,target_y_ind,path_gird_map)
+                curr_state = HOR_search
+                if flag:
+                    curr_state = RIGHT_UP_move   
+                    v = 0               # 停止运动
+                    yaw_rate = 0           
         # 旋转至右上角方向（若左遍历，则左上角方向）
         elif curr_state == RIGHT_UP_move: 
             if sweep_x_direction>0:
@@ -638,7 +692,7 @@ def main():  # pragma: no cover
         elif curr_state == BACK_move:
             # nxind = cxind - sweep_x_direction
             # nyind = cyind 
-            v, yaw_rate = move_target(xTrue,nxind,nyind,path_gird_map)
+            v, yaw_rate,flag = move_target(xTrue,nxind,nyind,path_gird_map)
             if math.fabs(v)<0.00001 and math.fabs(yaw_rate) < 0.000001 :
                 nxind = cxind - sweep_x_direction_back
                 nyind = cyind + 1
@@ -650,7 +704,7 @@ def main():  # pragma: no cover
 
         # 向前移动一个栅格到目标位置
         elif curr_state == FRONT_move:                                                  # 前行一个栅格距离
-            v, yaw_rate = move_target(xTrue,nxind,nyind,path_gird_map)
+            v, yaw_rate, flag = move_target(xTrue,nxind,nyind,path_gird_map)
             if math.fabs(v)<0.00001 and math.fabs(yaw_rate) < 0.000001 :
                 curr_state = X_DIRECTION_change
 
@@ -667,7 +721,8 @@ def main():  # pragma: no cover
                 sweep_x_direction = -sweep_x_direction                                  # 切换水平遍历方向
                 sweep_x_direction_back = sweep_x_direction
 
-        print("curr: (%d), v:(%f), yaw_rate:(%f),direction:(%d),back_direction:(%d)" %(curr_state,v,yaw_rate,sweep_x_direction,sweep_x_direction_back))
+        print("curr: (%d), v:(%f), yaw_rate:(%f), cx:(%d), nx:(%d), cy:(%d) ny:(%d), direction:(%d),back_direction:(%d)" \
+            %(curr_state,v,yaw_rate,cxind, nxind,cyind, nyind, sweep_x_direction,sweep_x_direction_back))
         # x,y=path_gird_map.calc_grid_central_xy_position_from_xy_index(nxind, nyind)
         # print("curr_x:(%f), curr_y:(%f),head:(%f),n_x:(%f),n_y:(%f)"%(xTrue[0,0], xTrue[1,0],xTrue[2,0],x,y))
 
@@ -675,6 +730,8 @@ def main():  # pragma: no cover
         
         path_x.append(xTrue[0,0])
         path_y.append(xTrue[1,0])
+
+        robot_model_x, robot_model_y = model_cal(xTrue)
 
         x_pos = xTrue[0,0] + 1.5 * math.cos(xTrue[2, 0]) 
         y_pos = xTrue[1,0] + 1.5 * math.sin(xTrue[2, 0])
@@ -686,6 +743,7 @@ def main():  # pragma: no cover
         for i in range(len(ox_inside)):
             ax2.plot(ox_inside[i], oy_inside[i], "-xb")
         ax2.plot(ox_recode, oy_recode, "-xb")
+        ax2.plot(robot_model_x, robot_model_y, "-.g")
         ax2.plot(path_x, path_y, ".b")
         ax2.plot(head_path_x,head_path_y,".r")
         plt.axis("equal")
