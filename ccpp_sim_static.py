@@ -243,8 +243,9 @@ def sweep_path_search(sweep_searcher, gmap, grid_search_animation=False):
     while True:
         cxind_list, cyind_list = sweep_searcher.move_target_grid(cxind, cyind, gmap) # 根据当前点，和栅格图，移动到下一个点
 
-        if sweep_searcher.is_search_done(gmap) or (len(cxind_list)==0):
-            print("Done")
+        if sweep_searcher.is_search_done(gmap):
+            break
+        if (len(cxind_list)==0):
             break
 
         for cx, cy in zip(cxind_list, cyind_list):
@@ -295,6 +296,23 @@ def planning(ox, oy, ox_in,oy_in,reso,
         xinds_goaly, goaly = find_goal_map(gmap, sweeping_direction)
         if len(xinds_goaly) == 0:
             break
+
+
+        # Changed sweep direction
+        if sweeping_direction  == SweepSearcher.SweepDirection.UP:
+            sweeping_direction = SweepSearcher.SweepDirection.DOWN
+        else :
+            sweeping_direction = SweepSearcher.SweepDirection.UP
+
+        sweep_searcher.sweep_direction = sweeping_direction
+        sweep_searcher.update_turning_window()
+        
+        # # Change move direction
+        if sweep_searcher.moving_direction == SweepSearcher.MovingDirection.RIGHT:
+            sweep_searcher.moving_direction = SweepSearcher.MovingDirection.LEFT
+        else:
+            sweep_searcher.moving_direction = SweepSearcher.MovingDirection.RIGHT
+
         xind_start, yind_start = sweep_searcher.search_start_grid(gmap)
         gx, gy = gmap.calc_grid_central_xy_position_from_xy_index(xind_start,yind_start)
         rx, ry = astar_path.planning(px_temp[-1], py_temp[-1], gx, gy)
