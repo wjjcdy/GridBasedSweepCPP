@@ -82,16 +82,26 @@ class SweepSearcher:
 
     def find_safe_turning_grid(self, cxind, cyind, gmap):
 
+        lastx = cxind
+        lasty = cyind
+        num =0 
         for (dxind, dyind) in self.turing_window:
 
             nxind = dxind + cxind
             nyind = dyind + cyind
-
+   
             # found safe grid
             if not gmap.check_occupied_from_xy_index(nxind, nyind, occupied_val=0.5): # 探索必须未经过的位置
-                return nxind, nyind
+                lastx = nxind
+                lasty = nyind
+            else:
+                if num == 0:
+                    return None, None
+                else:
+                    return lastx,lasty
+            num +=1
 
-        return None, None
+        return lastx,lasty
 
     def is_search_done(self, gmap):
         for ix in self.xinds_goaly:
@@ -102,11 +112,16 @@ class SweepSearcher:
         return True
 
     def update_turning_window(self):
+        # self.turing_window = [
+        #     (self.moving_direction, 0.0),
+        #     (self.moving_direction, self.sweep_direction),
+        #     (0, self.sweep_direction),
+        #     (-self.moving_direction, self.sweep_direction),
+        # ]
         self.turing_window = [
-            (self.moving_direction, 0.0),
-            (self.moving_direction, self.sweep_direction),
-            (0, self.sweep_direction),
             (-self.moving_direction, self.sweep_direction),
+            (0, self.sweep_direction),
+            (self.moving_direction, self.sweep_direction),
         ]
 
     def swap_moving_direction(self):
@@ -305,13 +320,9 @@ def planning(ox, oy, ox_in,oy_in,reso,
             sweeping_direction = SweepSearcher.SweepDirection.UP
 
         sweep_searcher.sweep_direction = sweeping_direction
-        sweep_searcher.update_turning_window()
         
         # # Change move direction
-        if sweep_searcher.moving_direction == SweepSearcher.MovingDirection.RIGHT:
-            sweep_searcher.moving_direction = SweepSearcher.MovingDirection.LEFT
-        else:
-            sweep_searcher.moving_direction = SweepSearcher.MovingDirection.RIGHT
+        sweep_searcher.swap_moving_direction()
 
         xind_start, yind_start = sweep_searcher.search_start_grid(gmap)
         gx, gy = gmap.calc_grid_central_xy_position_from_xy_index(xind_start,yind_start)
